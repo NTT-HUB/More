@@ -1,0 +1,127 @@
+
+_G.TreeRange = 100
+_G.TreeType = {"Small Tree", "TreeBig1", "TreeBig2", "TreeBig3", "Snowy Small Tree"}
+
+local function clearAllHealthESP()
+	for _, container in pairs({foliage, landmarks}) do
+		for _, obj in pairs(container:GetChildren()) do
+			local trunk = obj:FindFirstChild("Trunk")
+			if trunk then
+				local billboard = trunk:FindFirstChild("HealthBillboard")
+				if billboard then billboard:Destroy() end
+			end
+		end
+	end
+end
+
+task.spawn(function()
+	local treesLastUpdate = {}
+	
+while task.wait() do
+		if _G.cuttree then
+		local player = game:GetService("Players").LocalPlayer
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local map = workspace:WaitForChild("Map")
+local foliage = map:WaitForChild("Foliage")
+local landmarks = map:WaitForChild("Landmarks")
+			if not (player.Character and player.Character:FindFirstChild("HumanoidRootPart")) then continue end
+			local root = player.Character.HumanoidRootPart
+			local playerPos = root.Position
+
+			-- Tìm rìu trong Inventory
+			local toolInstance
+			if player:FindFirstChild("Inventory") then
+				for _, item in pairs(player.Inventory:GetChildren()) do
+					if item:IsA("Model") and string.find(string.lower(item.Name), "axe") then
+						toolInstance = item
+						break
+					end
+				end
+			end
+
+			if not toolInstance then
+				continue
+			end
+
+			-- Duyệt cây trong Foliage + Landmarks
+			local treesInRange = {}
+			for _, container in pairs({foliage, landmarks}) do
+				for _, obj in pairs(container:GetChildren()) do
+					if table.find(_G.TreeType, obj.Name) and obj:IsA("Model") then
+						local trunk = obj:FindFirstChild("Trunk")
+						if trunk and trunk:IsA("BasePart") then
+							local distance = (playerPos - trunk.Position).Magnitude
+							if distance <= _G.TreeRange then
+								table.insert(treesInRange, obj)
+							end
+						end
+					end
+				end
+			end
+
+			-- Gửi hit request + cập nhật HP
+			for _, tree in ipairs(treesInRange) do
+				local trunk = tree:FindFirstChild("Trunk")
+				if not trunk then continue end
+
+				local hitRegisters = tree:FindFirstChild("HitRegisters") or Instance.new("Folder", tree)
+				hitRegisters.Name = "HitRegisters"
+
+				local hitId = tostring(math.random(1000, 9999)) .. "_" .. tostring(os.time())
+				hitRegisters:SetAttribute(hitId, true)
+
+				pcall(function()
+					replicatedStorage:WaitForChild("RemoteEvents")
+					:WaitForChild("ToolDamageObject")
+					:InvokeServer(tree, toolInstance, hitId, root.CFrame)
+				end)
+
+				-- Cập nhật máu hiển thị
+				local health = tree:GetAttribute("Health") or 0
+				local billboard = trunk:FindFirstChild("HealthBillboard")
+
+				if not billboard then
+					billboard = Instance.new("BillboardGui")
+					billboard.Name = "HealthBillboard"
+					billboard.AlwaysOnTop = true
+					billboard.Size = UDim2.new(4, 0, 1, 0)
+					billboard.StudsOffset = Vector3.new(0, 4, 0)
+					billboard.Parent = trunk
+
+					local textLabel = Instance.new("TextLabel")
+					textLabel.Size = UDim2.new(1, 0, 1, 0)
+					textLabel.BackgroundTransparency = 1
+					textLabel.TextColor3 = Color3.new(1, 1, 1)
+					textLabel.TextStrokeTransparency = 0
+					textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+					textLabel.Font = Enum.Font.SourceSansBold
+					textLabel.TextSize = 20
+					textLabel.Text = "HP: " .. tostring(health)
+					textLabel.Parent = billboard
+				else
+					local textLabel = billboard:FindFirstChildOfClass("TextLabel")
+					if textLabel then
+						textLabel.Text = "HP: " .. tostring(health)
+					end
+				end
+
+				treesLastUpdate[tree] = os.time()
+				--task.wait()
+			end
+
+			-- Xoá bảng máu cây không hoạt động
+			for tree, lastUpdate in pairs(treesLastUpdate) do
+				if os.time() - lastUpdate > 5 then
+					local trunk = tree:FindFirstChild("Trunk")
+					if trunk then
+						local billboard = trunk:FindFirstChild("HealthBillboard")
+						if billboard then billboard:Destroy() end
+					end
+					treesLastUpdate[tree] = nil
+				end
+			end
+		else
+			clearAllHealthESP()
+		end
+	end
+end) 
