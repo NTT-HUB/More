@@ -1,0 +1,97 @@
+_G.table_item = {"Log"}
+_G.RotateCenter = Vector3.new(0, 50, 0)
+_G.RotateRadius = 30
+_G.RotateSpeed = 0.3
+_G.EnsureAnchored = false
+_G.RemoteDelay = 0.1
+_G.UseRemote = true
+
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RequestStart = ReplicatedStorage:FindFirstChild("RemoteEvents") and ReplicatedStorage.RemoteEvents:FindFirstChild("RequestStartDraggingItem")
+local StopDragging = ReplicatedStorage:FindFirstChild("RemoteEvents") and ReplicatedStorage.RemoteEvents:FindFirstChild("StopDraggingItem")
+
+local itemsFolder = workspace:FindFirstChild("Items")
+if not itemsFolder then
+return
+end
+
+local lastRemote = 0
+
+-- Lọc danh sách item hợp lệ (Model hoặc Part)
+local function gatherItems()
+local found = {}
+for _, item in pairs(itemsFolder:GetChildren()) do
+for _, name in ipairs(_G.table_item) do
+if string.lower(item.Name) == string.lower(name) then
+table.insert(found, item)
+end
+end
+end
+return found
+end
+
+-- Đảm bảo part được anchor
+local function ensureAnchored(model)
+if not model:IsA("Model") then return end
+local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+if _G.EnsureAnchored and primary then
+primary.Anchored = true
+end
+end
+
+-- Bỏ anchor khi tắt
+local function unanchorAll()
+for _, item in pairs(gatherItems()) do
+if item:IsA("Model") then
+local primary = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+if primary then
+primary.Anchored = false
+end
+end
+end
+end
+
+task.spawn(function()
+local rotation = 0
+while true do
+if not _G.mod_b2 then
+unanchorAll()
+task.wait(0.5)
+continue
+end
+
+local items = gatherItems()  
+    local count = #items  
+    if count > 0 then  
+        local angleStep = (2 * math.pi) / count  
+        rotation = rotation + (_G.RotateSpeed * 2 * math.pi) * RunService.Heartbeat:Wait()  
+
+        for i, model in ipairs(items) do  
+            if not model or not model.Parent then continue end  
+            local primary = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")  
+            if not primary then continue end  
+            ensureAnchored(model)  
+
+            local angle = angleStep * (i - 1) + rotation  
+            local offset = Vector3.new(math.cos(angle) * _G.RotateRadius, 0, math.sin(angle) * _G.RotateRadius)  
+            local targetPos = _G.RotateCenter + offset  
+            primary.CFrame = CFrame.new(targetPos) * CFrame.Angles(0, angle + math.rad(90), 0)  
+
+            -- Gửi remote nhẹ nhàng  
+            if _G.UseRemote and tick() - lastRemote >= _G.RemoteDelay then  
+                lastRemote = tick()  
+                pcall(function()  
+                    if RequestStart and StopDragging then  
+                        RequestStart:FireServer(model)  
+                        StopDragging:FireServer(model)  
+                    end  
+                end)  
+            end  
+        end  
+    else  
+        task.wait(0.5)  
+    end  
+end
+
+end)
